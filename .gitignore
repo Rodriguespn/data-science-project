@@ -2,9 +2,7 @@
 .idea
 .vscode
 
-data/
 extra/
-images/
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
