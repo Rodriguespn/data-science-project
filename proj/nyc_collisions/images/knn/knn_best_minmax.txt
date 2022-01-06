@@ -1,0 +1,1 @@
+Best results with 9 neighbors and manhattan
