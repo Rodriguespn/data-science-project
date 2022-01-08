@@ -1,15 +1,16 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy import ndarray
+from numpy import ndarray, argsort, arange
 from pandas import DataFrame, read_csv, unique, concat
-from matplotlib.pyplot import figure, savefig, show
+from matplotlib.pyplot import figure, savefig, show, subplots, Axes
 from sklearn.neighbors import KNeighborsClassifier
-from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart
+from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart, horizontal_bar_chart
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
+from sklearn.tree import DecisionTreeClassifier, plot_tree
 from imblearn.over_sampling import SMOTE
 
 
@@ -36,6 +37,7 @@ DATA_TEST_ZSCORE = DATA_TEST_FOLDER + "scaled_z_score.csv"
 IMAGES_FOLDER = "images/"
 KNN_FOLDER = IMAGES_FOLDER + "knn/"
 NAIVE_BAYES_FOLDER = IMAGES_FOLDER + "naive_bayes/"
+DECISION_TREES_FOLDER = IMAGES_FOLDER + "decision_trees/"
 
 TARGET_CLASS = 'PERSON_INJURY'
 
@@ -47,6 +49,8 @@ if not os.path.exists(KNN_FOLDER):
 	os.makedirs(KNN_FOLDER)
 if not os.path.exists(NAIVE_BAYES_FOLDER):
 	os.makedirs(NAIVE_BAYES_FOLDER)
+if not os.path.exists(DECISION_TREES_FOLDER):
+	os.makedirs(DECISION_TREES_FOLDER)
 
 
 def write_to_file(file_name, text):
@@ -211,21 +215,99 @@ def naive_bayes_study(data_train_file, data_test_file, files_name):
 	show()
 
 
-split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
-split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
-split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
+def decision_trees_study(data_train_file, data_test_file, files_name):
+	train: DataFrame = read_csv(data_train_file)
+	trnY: ndarray = train.pop(TARGET_CLASS).values
+	trnX: ndarray = train.values
+	labels = unique(trnY)
+	labels.sort()
 
-knn_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
-knn_study(DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX, "minmax")
-knn_study(DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE, "z_score")
+	test: DataFrame = read_csv(data_test_file)
+	tstY: ndarray = test.pop(TARGET_CLASS).values
+	tstX: ndarray = test.values
 
-balance(DATA_TRAIN_UNSCALED, DATA_TRAIN_UNDERSAMPLING, DATA_TRAIN_OVERSAMPLING, DATA_TRAIN_SMOTE)
+	min_impurity_decrease = [0.01, 0.005, 0.0025, 0.001, 0.0005]
+	max_depths = [2, 5, 10, 15, 20, 25]
+	criteria = ['entropy', 'gini']
+	best = ('', 0, 0.0)
+	last_best = 0
+	best_model = None
 
-knn_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
-knn_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
-knn_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+	min_y = 1
+	figure()
+	fig, axs = subplots(1, 2, figsize=(16, 4), squeeze=False)
+	for k in range(len(criteria)):
+		f = criteria[k]
+		values = {}
+		for d in max_depths:
+			yvalues = []
+			for imp in min_impurity_decrease:
+				tree = DecisionTreeClassifier(max_depth=d, criterion=f, min_impurity_decrease=imp)
+				tree.fit(trnX, trnY)
+				prdY = tree.predict(tstX)
+				yvalues.append(accuracy_score(tstY, prdY))
+				if yvalues[-1] > last_best:
+					best = (f, d, imp)
+					last_best = yvalues[-1]
+					best_model = tree
+				if yvalues[-1] < min_y:
+					min_y = yvalues[-1]
 
-naive_bayes_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
-naive_bayes_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
-naive_bayes_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
-naive_bayes_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+			values[d] = yvalues
+
+		min_y = max(0, (10 * min_y - 1) / 9)  # space between the min value and the x-axis is 10% of graph
+		axs[0, k].set_ylim([min_y, 1])
+
+		multiple_line_chart(min_impurity_decrease, values, ax=axs[0, k], title=f'Decision Trees with {f} criteria', xlabel='min_impurity_decrease', ylabel='accuracy', percentage=False)
+
+	savefig(DECISION_TREES_FOLDER + "decision_trees_study_" + files_name + ".png")
+	show()
+	write_to_file(DECISION_TREES_FOLDER + "naive_bayes_best_" + files_name + ".txt", 'Best results achieved with %s criteria, depth=%d and min_impurity_decrease=%1.2f ==> accuracy=%1.2f' % (best[0], best[1], best[2], last_best))
+
+	labels = [str(value) for value in labels]
+	plot_tree(best_model, feature_names=train.columns, class_names=labels)
+	savefig(DECISION_TREES_FOLDER + "decision_trees_best_tree_" + files_name + ".png")
+	show()
+
+	prd_trn = best_model.predict(trnX)
+	prd_tst = best_model.predict(tstX)
+	plot_evaluation_results(labels, trnY, prd_trn, tstY, prd_tst)
+	savefig(DECISION_TREES_FOLDER + "decision_trees_evaluation_" + files_name + ".png")
+	show()
+
+	variables = train.columns
+	importances = best_model.feature_importances_
+	indices = argsort(importances)[::-1]
+	elems = []
+	imp_values = []
+	for f in range(len(variables)):
+		elems += [variables[indices[f]]]
+		imp_values += [importances[indices[f]]]
+		print(f'{f + 1}. feature {elems[f]} ({importances[indices[f]]})')
+
+	figure()
+	horizontal_bar_chart(elems, imp_values, error=None, title='Decision Tree Features importance', xlabel='importance', ylabel='variables')
+	savefig(DECISION_TREES_FOLDER + "decision_trees_ranking_" + files_name + ".png")
+	show()
+
+
+# split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
+# split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
+# split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
+#
+# knn_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+# knn_study(DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX, "minmax")
+# knn_study(DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE, "z_score")
+#
+# balance(DATA_TRAIN_UNSCALED, DATA_TRAIN_UNDERSAMPLING, DATA_TRAIN_OVERSAMPLING, DATA_TRAIN_SMOTE)
+#
+# knn_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
+# knn_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
+# knn_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+#
+# naive_bayes_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+# naive_bayes_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
+# naive_bayes_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
+# naive_bayes_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+
+decision_trees_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
