@@ -287,7 +287,6 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
     best_model = None
 
     min_y = 1
-    figure()
     fig, axs = subplots(1, 2, figsize=(16, 4), squeeze=False)
     for k in range(len(criteria)):
         f = criteria[k]
@@ -319,10 +318,11 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
     savefig(DECISION_TREES_FOLDER +
             "decision_trees_study_" + files_name + ".png")
     show()
-    write_to_file(DECISION_TREES_FOLDER + "naive_bayes_best_" + files_name + ".txt",
+    write_to_file(DECISION_TREES_FOLDER + "decision_tree_best_" + files_name + ".txt",
                   'Best results achieved with %s criteria, depth=%d and min_impurity_decrease=%1.2f ==> accuracy=%1.2f' % (best[0], best[1], best[2], last_best))
 
     labels = [str(value) for value in labels]
+
     plot_tree(best_model, feature_names=train.columns, class_names=labels)
     savefig(DECISION_TREES_FOLDER +
             "decision_trees_best_tree_" + files_name + ".png")
@@ -345,7 +345,6 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
         imp_values += [importances[indices[f]]]
         print(f'{f + 1}. feature {elems[f]} ({importances[indices[f]]})')
 
-    figure()
     horizontal_bar_chart(elems, imp_values, error=None,
                          title='Decision Tree Features importance', xlabel='importance', ylabel='variables')
     savefig(DECISION_TREES_FOLDER +
@@ -360,43 +359,43 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
 if __name__ == "__main__":
     import time
 
-    start = time.perf_counter()
+    # start = time.perf_counter()
 
     split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
-    split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
-    split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
+    # split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
+    # split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
 
-    print("--- Split data run time = {} seconds ---".format(time.perf_counter() - start))
+    # print("--- Split data run time = {} seconds ---".format(time.perf_counter() - start))
 
-    start = time.perf_counter()
+    # start = time.perf_counter()
 
-    knn_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
-    knn_study(DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX, "minmax")
-    knn_study(DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE, "z_score")
+    # knn_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+    # knn_study(DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX, "minmax")
+    # knn_study(DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE, "z_score")
 
-    print("--- Unbalanced KNN run time = {} seconds ---".format(time.perf_counter() - start))
+    # print("--- Unbalanced KNN run time = {} seconds ---".format(time.perf_counter() - start))
 
-    start = time.perf_counter()
+    # start = time.perf_counter()
 
-    balance(DATA_TRAIN_UNSCALED, DATA_TRAIN_UNDERSAMPLING,
-            DATA_TRAIN_OVERSAMPLING, DATA_TRAIN_SMOTE)
+    # balance(DATA_TRAIN_UNSCALED, DATA_TRAIN_UNDERSAMPLING,
+    #         DATA_TRAIN_OVERSAMPLING, DATA_TRAIN_SMOTE)
 
-    knn_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
-    knn_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
-    knn_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+    # knn_study(DATA_TRAIN_UNDERSAMPLING, DATA_TEST_UNSCALED, "undersampling")
+    # knn_study(DATA_TRAIN_OVERSAMPLING, DATA_TEST_UNSCALED, "oversampling")
+    # knn_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
 
-    print("--- Balanced KNN run time = {} seconds ---".format(time.perf_counter() - start))
+    # print("--- Balanced KNN run time = {} seconds ---".format(time.perf_counter() - start))
 
-    start = time.perf_counter()
+    # start = time.perf_counter()
 
-    naive_bayes_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
-    naive_bayes_study(DATA_TRAIN_UNDERSAMPLING,
-                      DATA_TEST_UNSCALED, "undersampling")
-    naive_bayes_study(DATA_TRAIN_OVERSAMPLING,
-                      DATA_TEST_UNSCALED, "oversampling")
-    naive_bayes_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
+    # naive_bayes_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+    # naive_bayes_study(DATA_TRAIN_UNDERSAMPLING,
+    #                   DATA_TEST_UNSCALED, "undersampling")
+    # naive_bayes_study(DATA_TRAIN_OVERSAMPLING,
+    #                   DATA_TEST_UNSCALED, "oversampling")
+    # naive_bayes_study(DATA_TRAIN_SMOTE, DATA_TEST_UNSCALED, "smote")
 
-    print("--- Naive Bayes time = {} seconds ---".format(time.perf_counter() - start))
+    # print("--- Naive Bayes time = {} seconds ---".format(time.perf_counter() - start))
 
     start = time.perf_counter()
 
