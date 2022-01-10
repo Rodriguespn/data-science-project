@@ -1,1 +1,1 @@
-Best results with 5 neighbors and manhattan
+Best results with 9 neighbors and manhattan ==> accuracy=0.99

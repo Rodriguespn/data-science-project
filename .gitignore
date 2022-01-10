@@ -2,6 +2,8 @@
 .idea
 .vscode
 
+~$*.docx
+
 extra/
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
