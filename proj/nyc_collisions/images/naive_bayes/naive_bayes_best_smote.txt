@@ -1,1 +1,1 @@
-Best results with BernoulliNB
+Best results with BernoulliNB ==> accuracy=0.93

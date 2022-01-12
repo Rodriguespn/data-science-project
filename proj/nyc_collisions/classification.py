@@ -1,23 +1,26 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy import ndarray, argsort
+from numpy import ndarray, argsort, std
 from pandas import DataFrame, read_csv, unique, concat
-from matplotlib.pyplot import figure, savefig, show, subplots
+from matplotlib.pyplot import figure, savefig, show, subplots, title
 from sklearn.neighbors import KNeighborsClassifier
-from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart, horizontal_bar_chart
+from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart, horizontal_bar_chart, HEIGHT
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
 from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.ensemble import RandomForestClassifier
 from imblearn.over_sampling import SMOTE
+from seaborn import heatmap
 
 
 DATA_FOLDER = "data/"
 
 DATA_PREP_FOLDER = DATA_FOLDER + "data-prep/"
-DATA_FILE_UNSCALED = DATA_PREP_FOLDER + "dummification.csv"
+DATA_FILE_DUMMIFICATION = DATA_PREP_FOLDER + "dummification.csv"
+DATA_FILE_UNSCALED = DATA_PREP_FOLDER + "feature_selection.csv"
 DATA_FILE_MINMAX = DATA_PREP_FOLDER + "scaled_minmax.csv"
 DATA_FILE_ZSCORE = DATA_PREP_FOLDER + "scaled_z_score.csv"
 
@@ -35,9 +38,11 @@ DATA_TEST_MINXMAX = DATA_TEST_FOLDER + "scaled_minmax.csv"
 DATA_TEST_ZSCORE = DATA_TEST_FOLDER + "scaled_z_score.csv"
 
 IMAGES_FOLDER = "images/"
+FEATURE_SELECTION_FOLDER = IMAGES_FOLDER + "feature_selection/"
 KNN_FOLDER = IMAGES_FOLDER + "knn/"
 NAIVE_BAYES_FOLDER = IMAGES_FOLDER + "naive_bayes/"
 DECISION_TREES_FOLDER = IMAGES_FOLDER + "decision_trees/"
+RANDOM_FORESTS_FOLDER = IMAGES_FOLDER + "random_forests/"
 
 TARGET_CLASS = 'PERSON_INJURY'
 
@@ -45,12 +50,16 @@ if not os.path.exists(DATA_TRAIN_FOLDER):
     os.makedirs(DATA_TRAIN_FOLDER)
 if not os.path.exists(DATA_TEST_FOLDER):
     os.makedirs(DATA_TEST_FOLDER)
+if not os.path.exists(FEATURE_SELECTION_FOLDER):
+    os.makedirs(FEATURE_SELECTION_FOLDER)
 if not os.path.exists(KNN_FOLDER):
     os.makedirs(KNN_FOLDER)
 if not os.path.exists(NAIVE_BAYES_FOLDER):
     os.makedirs(NAIVE_BAYES_FOLDER)
 if not os.path.exists(DECISION_TREES_FOLDER):
     os.makedirs(DECISION_TREES_FOLDER)
+if not os.path.exists(RANDOM_FORESTS_FOLDER):
+    os.makedirs(RANDOM_FORESTS_FOLDER)
 
 
 def write_to_file(file_name, text):
@@ -80,12 +89,12 @@ def split_data(data_file, train_file, test_file):
     trnX, tstX, trnY, tstY = train_test_split(x, y, train_size=0.7, stratify=y)
 
     train = concat([DataFrame(trnX, columns=data.columns),
-                   DataFrame(trnY, columns=[TARGET_CLASS])], axis=1)
+                    DataFrame(trnY, columns=[TARGET_CLASS])], axis=1)
     train.to_csv(train_file, index=False)
     print("Train data file {} saved".format(train_file))
 
     test = concat([DataFrame(tstX, columns=data.columns),
-                  DataFrame(tstY, columns=[TARGET_CLASS])], axis=1)
+                   DataFrame(tstY, columns=[TARGET_CLASS])], axis=1)
     test.to_csv(test_file, index=False)
     print("Test data file {} saved".format(train_file))
 
@@ -138,10 +147,94 @@ def balance(data_train_file, undersampling_file, oversampling_file, smote_file):
     print("-------------------------------------------")
 
 
+def select_redundant(data: DataFrame, threshold: float) -> tuple[dict, DataFrame]:
+
+    corr_mtx = data.corr()
+
+    if corr_mtx.empty:
+        return {}
+
+    corr_mtx = abs(corr_mtx)
+    vars_2drop = {}
+    for el in corr_mtx.columns:
+        el_corr = (corr_mtx[el]).loc[corr_mtx[el] >= threshold]
+        if len(el_corr) == 1:
+            corr_mtx.drop(labels=el, axis=1, inplace=True)
+            corr_mtx.drop(labels=el, axis=0, inplace=True)
+        else:
+            vars_2drop[el] = el_corr.index
+
+    figure(figsize=[10, 10])
+    heatmap(corr_mtx, xticklabels=corr_mtx.columns,
+            yticklabels=corr_mtx.columns, annot=False, cmap='Blues')
+    title('Filtered Correlation Analysis')
+    savefig(
+        f'{FEATURE_SELECTION_FOLDER}filtered_correlation_analysis_{ threshold} + .png')
+    show()
+
+    return vars_2drop
+
+
+def select_low_variance(data: DataFrame, threshold: float) -> list:
+    lst_variables = []
+    lst_variances = []
+    for el in data.columns:
+        value = data[el].var()
+        if value >= threshold:
+            lst_variables.append(el)
+            lst_variances.append(value)
+
+    print(len(lst_variables), lst_variables)
+    figure(figsize=[10, 4])
+    bar_chart(lst_variables, lst_variances, title='Variance analysis',
+              xlabel='variables', ylabel='variance', rotation=True)
+    savefig(f'{FEATURE_SELECTION_FOLDER}filtered_variance_analysis.png')
+    show()
+
+    return lst_variables
+
+
+def drop_redundant(data_file: str, features_sel_file: str, corr_threshold: float, var_threshold: float) -> DataFrame:
+
+    data: DataFrame = read_csv(data_file)
+
+    print(data.shape)
+
+    vars_2drop = select_redundant(data, corr_threshold)
+    print(vars_2drop.keys())
+
+    data_without_target = data.copy(deep=True)
+
+    data_without_target.drop(labels=TARGET_CLASS, axis=1, inplace=True)
+
+    sel_2drop = select_low_variance(data_without_target, var_threshold)
+
+    print(vars_2drop)
+
+    print(vars_2drop.keys())
+    for key in vars_2drop.keys():
+        if key not in sel_2drop:
+            for r in vars_2drop[key]:
+                if r != key and r not in sel_2drop:
+                    sel_2drop.append(r)
+
+    sel_2drop = set(sel_2drop)
+    print('Variables to drop', sel_2drop)
+    df = data.copy()
+    for var in sel_2drop:
+        df.drop(labels=var, axis=1, inplace=True)
+
+    print(df.shape)
+
+    df.to_csv(features_sel_file, index=False)
+
+    return df
+
+
 def knn_study(data_train_file, data_test_file, files_name, metrics=[], n_neighbors=[]):
     print("-------------------------------------------")
     print("Starting knn study of {} and {} files - {}".format(data_train_file,
-          data_test_file, files_name))
+                                                              data_test_file, files_name))
 
     train: DataFrame = read_csv(data_train_file)
     trnY: ndarray = train.pop(TARGET_CLASS).values
@@ -179,7 +272,7 @@ def knn_study(data_train_file, data_test_file, files_name, metrics=[], n_neighbo
                 min_y = yvalues[-1]
 
             print("--- KNN run time params=(d={}, n={}) = {} seconds ---".format(d,
-                  n, time.perf_counter() - start))
+                                                                                 n, time.perf_counter() - start))
         values[d] = yvalues
 
     figure()
@@ -207,7 +300,7 @@ def knn_study(data_train_file, data_test_file, files_name, metrics=[], n_neighbo
     show()
 
     print("Finished knn study of {} and {} files - {}".format(data_train_file,
-          data_test_file, files_name))
+                                                              data_test_file, files_name))
     print("-------------------------------------------")
 
 
@@ -286,14 +379,17 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
     last_best = 0
     best_model = None
 
+    cols = len(criteria)
+    fig, axs = subplots(1, cols, figsize=(
+        cols*HEIGHT, HEIGHT), squeeze=False)
     min_y = 1
-    fig, axs = subplots(1, 2, figsize=(16, 4), squeeze=False)
-    for k in range(len(criteria)):
+    for k in range(cols):
         f = criteria[k]
         values = {}
         for d in max_depths:
             yvalues = []
             for imp in min_impurity_decrease:
+                start = time.perf_counter()
                 tree = DecisionTreeClassifier(
                     max_depth=d, criterion=f, min_impurity_decrease=imp)
                 tree.fit(trnX, trnY)
@@ -303,8 +399,12 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
                     best = (f, d, imp)
                     last_best = yvalues[-1]
                     best_model = tree
+
                 if yvalues[-1] < min_y:
                     min_y = yvalues[-1]
+
+                print("--- DT run time params=(d={}, imp={}) = {} seconds ---".format(d,
+                                                                                      imp, time.perf_counter() - start))
 
             values[d] = yvalues
 
@@ -356,12 +456,114 @@ def decision_trees_study(data_train_file, data_test_file, files_name):
     print("-------------------------------------------")
 
 
+def random_forests_study(data_train_file, data_test_file, files_name):
+    print("-------------------------------------------")
+    print("Starting random forests study of {} and {} files - {}".format(
+        data_train_file, data_test_file, files_name))
+    train: DataFrame = read_csv(data_train_file)
+    trnY: ndarray = train.pop(TARGET_CLASS).values
+    trnX: ndarray = train.values
+    labels = unique(trnY)
+    labels.sort()
+
+    test: DataFrame = read_csv(data_test_file)
+    tstY: ndarray = test.pop(TARGET_CLASS).values
+    tstX: ndarray = test.values
+
+    n_estimators = [5, 10, 25, 50, 75, 100, 150, 200, 250, 300]
+    max_depths = [5, 10, 25]
+    max_features = [.1, .3, .5, .7, .9, 1]
+    best = ('', 0, 0)
+    last_best = 0
+    best_model = None
+
+    cols = len(max_depths)
+    fig, axs = subplots(1, cols, figsize=(
+        cols*HEIGHT, HEIGHT), squeeze=False)
+
+    min_y = 1
+    for k in range(cols):
+        d = max_depths[k]
+        values = {}
+        for f in max_features:
+            yvalues = []
+            for n in n_estimators:
+                start = time.perf_counter()
+                rf = RandomForestClassifier(
+                    n_estimators=n, max_depth=d, max_features=f)
+                rf.fit(trnX, trnY)
+                prdY = rf.predict(tstX)
+                yvalues.append(accuracy_score(tstY, prdY))
+                if yvalues[-1] > last_best:
+                    best = (d, f, n)
+                    last_best = yvalues[-1]
+                    best_model = rf
+
+                if yvalues[-1] < min_y:
+                    min_y = yvalues[-1]
+
+                print("--- RF run time params=(depth={}, f={}, n={}) = {} seconds ---".format(d, f,
+                                                                                              n, time.perf_counter() - start))
+
+            values[f] = yvalues
+
+        # space between the min value and the x-axis is 10% of graph
+        min_y = max(0, (10 * min_y - 1) / 9)
+        axs[0, k].set_ylim([min_y, 1])
+
+        multiple_line_chart(n_estimators, values, ax=axs[0, k], title=f'Random Forests with max_depth={d}',
+                            xlabel='nr estimators', ylabel='accuracy', percentage=False)
+
+    savefig(RANDOM_FORESTS_FOLDER +
+            "random_forests_study_" + files_name + ".png")
+    show()
+    print('Best results with depth=%d, %1.2f features and %d estimators, with accuracy=%1.2f' %
+          (best[0], best[1], best[2], last_best))
+
+    prd_trn = best_model.predict(trnX)
+    prd_tst = best_model.predict(tstX)
+    plot_evaluation_results(labels, trnY, prd_trn, tstY, prd_tst)
+    savefig(RANDOM_FORESTS_FOLDER +
+            "random_forests_evaluation_" + files_name + ".png")
+    show()
+
+    variables = train.columns
+    importances = best_model.feature_importances_
+    stdevs = std(
+        [tree.feature_importances_ for tree in best_model.estimators_], axis=0)
+    indices = argsort(importances)[::-1]
+    elems = []
+    for f in range(len(variables)):
+        elems += [variables[indices[f]]]
+        print(f'{f+1}. feature {elems[f]} ({importances[indices[f]]})')
+
+    horizontal_bar_chart(elems, importances[indices], stdevs[indices],
+                         title='Random Forest Features importance', xlabel='importance', ylabel='variables')
+
+    savefig(RANDOM_FORESTS_FOLDER +
+            "random_forests_ranking_" + files_name + ".png")
+
+    show()
+
+    print("Finished random forests study of {} and {} files - {}".format(
+        data_train_file, data_test_file, files_name))
+    print("-------------------------------------------")
+
+
 if __name__ == "__main__":
     import time
 
+    start = time.perf_counter()
+
+    CORR_THRESHOLD, VAR_THRESHOLD = 0.9, 0.1
+    df = drop_redundant(DATA_FILE_DUMMIFICATION,
+                        DATA_FILE_UNSCALED, CORR_THRESHOLD, VAR_THRESHOLD)
+
+    print("--- Feature selection run time = {} seconds ---".format(time.perf_counter() - start))
+
     # start = time.perf_counter()
 
-    split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
+    # split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
     # split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
     # split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
 
@@ -402,3 +604,9 @@ if __name__ == "__main__":
     decision_trees_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
 
     print("--- Decision tree run time = {} seconds ---".format(time.perf_counter() - start))
+
+    # start = time.perf_counter()
+
+    # random_forests_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+
+    # print("--- Random Forests run time = {} seconds ---".format(time.perf_counter() - start))

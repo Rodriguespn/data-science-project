@@ -1,1 +1,1 @@
-Best results with BernoulliNB
+Best results with MultinomialNB ==> accuracy=0.99

@@ -1,1 +1,1 @@
-Best results with GaussianNB
+Best results with GaussianNB ==> accuracy=0.94
