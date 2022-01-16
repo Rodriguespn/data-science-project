@@ -5,13 +5,13 @@ from numpy import ndarray, argsort, std
 from pandas import DataFrame, read_csv, unique, concat
 from matplotlib.pyplot import figure, savefig, show, subplots, title
 from sklearn.neighbors import KNeighborsClassifier
-from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart, horizontal_bar_chart, HEIGHT
+from utils.ds_charts import plot_evaluation_results, multiple_line_chart, get_variable_types, bar_chart, horizontal_bar_chart, plot_overfitting_study, HEIGHT
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from imblearn.over_sampling import SMOTE
 from seaborn import heatmap
 
@@ -19,23 +19,23 @@ from seaborn import heatmap
 DATA_FOLDER = "data/"
 
 DATA_PREP_FOLDER = DATA_FOLDER + "data-prep/"
-DATA_FILE_DUMMIFICATION = DATA_PREP_FOLDER + "dummification.csv"
-DATA_FILE_UNSCALED = DATA_PREP_FOLDER + "feature_selection.csv"
+DATA_FILE_UNSCALED = DATA_PREP_FOLDER + "dummification.csv"
+DATA_FILE_FEATURE_SELECTION = DATA_PREP_FOLDER + "feature_selection.csv"
 DATA_FILE_MINMAX = DATA_PREP_FOLDER + "scaled_minmax.csv"
 DATA_FILE_ZSCORE = DATA_PREP_FOLDER + "scaled_z_score.csv"
 
 DATA_TRAIN_FOLDER = DATA_FOLDER + "data-train/"
-DATA_TRAIN_UNSCALED = DATA_TRAIN_FOLDER + "unscaled.csv"
-DATA_TRAIN_MINXMAX = DATA_TRAIN_FOLDER + "scaled_minmax.csv"
-DATA_TRAIN_ZSCORE = DATA_TRAIN_FOLDER + "scaled_z_score.csv"
-DATA_TRAIN_UNDERSAMPLING = DATA_TRAIN_FOLDER + "balanced_undersampling.csv"
-DATA_TRAIN_OVERSAMPLING = DATA_TRAIN_FOLDER + "balanced_oversampling.csv"
-DATA_TRAIN_SMOTE = DATA_TRAIN_FOLDER + "balanced_smote.csv"
+DATA_TRAIN_UNSCALED = DATA_TRAIN_FOLDER + "train_unscaled.csv"
+DATA_TRAIN_MINXMAX = DATA_TRAIN_FOLDER + "train_scaled_minmax.csv"
+DATA_TRAIN_ZSCORE = DATA_TRAIN_FOLDER + "train_scaled_z_score.csv"
+DATA_TRAIN_UNDERSAMPLING = DATA_TRAIN_FOLDER + "train_balanced_undersampling.csv"
+DATA_TRAIN_OVERSAMPLING = DATA_TRAIN_FOLDER + "train_balanced_oversampling.csv"
+DATA_TRAIN_SMOTE = DATA_TRAIN_FOLDER + "train_balanced_smote.csv"
 
 DATA_TEST_FOLDER = DATA_FOLDER + "data-test/"
-DATA_TEST_UNSCALED = DATA_TEST_FOLDER + "unscaled.csv"
-DATA_TEST_MINXMAX = DATA_TEST_FOLDER + "scaled_minmax.csv"
-DATA_TEST_ZSCORE = DATA_TEST_FOLDER + "scaled_z_score.csv"
+DATA_TEST_UNSCALED = DATA_TEST_FOLDER + "test_unscaled.csv"
+DATA_TEST_MINXMAX = DATA_TEST_FOLDER + "test_scaled_minmax.csv"
+DATA_TEST_ZSCORE = DATA_TEST_FOLDER + "test_scaled_z_score.csv"
 
 IMAGES_FOLDER = "images/"
 FEATURE_SELECTION_FOLDER = IMAGES_FOLDER + "feature_selection/"
@@ -43,6 +43,7 @@ KNN_FOLDER = IMAGES_FOLDER + "knn/"
 NAIVE_BAYES_FOLDER = IMAGES_FOLDER + "naive_bayes/"
 DECISION_TREES_FOLDER = IMAGES_FOLDER + "decision_trees/"
 RANDOM_FORESTS_FOLDER = IMAGES_FOLDER + "random_forests/"
+GRADIENT_BOOSTING_FOLDER = IMAGES_FOLDER + "gradient_boosting/"
 
 TARGET_CLASS = 'ALARM'
 
@@ -60,7 +61,8 @@ if not os.path.exists(DECISION_TREES_FOLDER):
     os.makedirs(DECISION_TREES_FOLDER)
 if not os.path.exists(RANDOM_FORESTS_FOLDER):
     os.makedirs(RANDOM_FORESTS_FOLDER)
-
+if not os.path.exists(GRADIENT_BOOSTING_FOLDER):
+    os.makedirs(GRADIENT_BOOSTING_FOLDER)
 
 def write_to_file(file_name, text):
     file = open(file_name, "w")
@@ -543,25 +545,107 @@ def random_forests_study(data_train_file, data_test_file, files_name):
         data_train_file, data_test_file, files_name))
     print("-------------------------------------------")
 
+def gradient_boosting_study(data_train_file, data_test_file, files_name):
+    print("-------------------------------------------")
+    print("Starting gradient boosting study of {} and {} files - {}".format(
+        data_train_file, data_test_file, files_name))
+
+    train: DataFrame = read_csv(f'{data_train_file}_train.csv')
+    trnY: ndarray = train.pop(TARGET_CLASS).values
+    trnX: ndarray = train.values
+    labels = unique(trnY)
+    labels.sort()
+
+    test: DataFrame = read_csv(f'{data_test_file}_test.csv')
+    tstY: ndarray = test.pop(TARGET_CLASS).values
+    tstX: ndarray = test.values
+
+    n_estimators = [5, 10, 25, 50, 75, 100, 200, 300, 400]
+    max_depths = [5, 10, 25]
+    learning_rate = [.1, .5, .9]
+    best = ('', 0, 0)
+    last_best = 0
+    best_model = None
+
+    cols = len(max_depths)
+    figure()
+    fig, axs = subplots(1, cols, figsize=(cols*HEIGHT, HEIGHT), squeeze=False)
+    for k in range(len(max_depths)):
+        d = max_depths[k]
+        values = {}
+        for lr in learning_rate:
+            yvalues = []
+            for n in n_estimators:
+                gb = GradientBoostingClassifier(n_estimators=n, max_depth=d, learning_rate=lr)
+                gb.fit(trnX, trnY)
+                prdY = gb.predict(tstX)
+                yvalues.append(accuracy_score(tstY, prdY))
+                if yvalues[-1] > last_best:
+                    best = (d, lr, n)
+                    last_best = yvalues[-1]
+                    best_model = gb
+            values[lr] = yvalues
+        multiple_line_chart(n_estimators, values, ax=axs[0, k], title=f'Gradient Boorsting with max_depth={d}',
+                            xlabel='nr estimators', ylabel='accuracy', percentage=True)
+    savefig(f'images/{files_name}_gb_study.png')
+    show()
+    print('Best results with depth=%d, learning rate=%1.2f and %d estimators, with accuracy=%1.2f'%(best[0], best[1], best[2], last_best))
+
+    prd_trn = best_model.predict(trnX)
+    prd_tst = best_model.predict(tstX)
+    plot_evaluation_results(labels, trnY, prd_trn, tstY, prd_tst)
+    savefig(f'images/{files_name}_gb_best.png')
+    show()
+
+    variables = train.columns
+    importances = best_model.feature_importances_
+    indices = argsort(importances)[::-1]
+    stdevs = std([tree[0].feature_importances_ for tree in best_model.estimators_], axis=0)
+    elems = []
+    for f in range(len(variables)):
+        elems += [variables[indices[f]]]
+        print(f'{f+1}. feature {elems[f]} ({importances[indices[f]]})')
+
+    figure()
+    horizontal_bar_chart(elems, importances[indices], stdevs[indices], title='Gradient Boosting Features importance', xlabel='importance', ylabel='variables')
+    savefig(f'images/{files_name}_gb_ranking.png')
+
+    lr = 0.7
+    max_depth = 10
+    eval_metric = accuracy_score
+    y_tst_values = []
+    y_trn_values = []
+    for n in n_estimators:
+        gb = GradientBoostingClassifier(n_estimators=n, max_depth=d, learning_rate=lr)
+        gb.fit(trnX, trnY)
+        prd_tst_Y = gb.predict(tstX)
+        prd_trn_Y = gb.predict(trnX)
+        y_tst_values.append(eval_metric(tstY, prd_tst_Y))
+        y_trn_values.append(eval_metric(trnY, prd_trn_Y))
+    plot_overfitting_study(n_estimators, y_trn_values, y_tst_values, name=f'GB_depth={max_depth}_lr={lr}', xlabel='nr_estimators', ylabel=str(eval_metric))
+
+    print("Finished gradient boosting study of {} and {} files - {}".format(
+        data_train_file, data_test_file, files_name))
+    print("-------------------------------------------")
 
 if __name__ == "__main__":
     import time
 
-    # start = time.perf_counter()
+    start = time.perf_counter()
 
-    # CORR_THRESHOLD, VAR_THRESHOLD = 0.9, 0.1
-    # drop_redundant(DATA_FILE_DUMMIFICATION,
-    #                DATA_FILE_UNSCALED, CORR_THRESHOLD, VAR_THRESHOLD)
+    CORR_THRESHOLD, VAR_THRESHOLD = 0.9, 0.1
+    drop_redundant(DATA_FILE_UNSCALED,
+                   DATA_FILE_FEATURE_SELECTION, CORR_THRESHOLD, VAR_THRESHOLD)
 
-    # print("--- Feature selection run time = {} seconds ---".format(time.perf_counter() - start))
+    print("--- Feature selection run time = {} seconds ---".format(time.perf_counter() - start))
 
-    # start = time.perf_counter()
+    start = time.perf_counter()
 
-    # split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
-    # split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
-    # split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
+    split_data(DATA_FILE_UNSCALED, DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED)
+    split_data(DATA_FILE_MINMAX, DATA_TRAIN_MINXMAX, DATA_TEST_MINXMAX)
+    split_data(DATA_FILE_ZSCORE, DATA_TRAIN_ZSCORE, DATA_TEST_ZSCORE)
 
-    # print("--- Split data run time = {} seconds ---".format(time.perf_counter() - start))
+    print("--- Split data run time = {} seconds ---".format(time.perf_counter() - start))
 
     # start = time.perf_counter()
 
@@ -599,8 +683,14 @@ if __name__ == "__main__":
 
     # print("--- Decision tree run time = {} seconds ---".format(time.perf_counter() - start))
 
+    # start = time.perf_counter()
+
+    # random_forests_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+
+    # print("--- Random Forests run time = {} seconds ---".format(time.perf_counter() - start))
+
     start = time.perf_counter()
 
-    random_forests_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
+    gradient_boosting_study(DATA_TRAIN_UNSCALED, DATA_TEST_UNSCALED, "unscaled")
 
-    print("--- Random Forests run time = {} seconds ---".format(time.perf_counter() - start))
+    print("--- Gradient Boosting run time = {} seconds ---".format(time.perf_counter() - start))
